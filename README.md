@@ -1,18 +1,31 @@
 # EasyProxyClient
 
-EasyProxyClient 是面向 [EasyProxy](https://github.com/SwartzMss/EasyProxy) 的客户端示例。项目打算使用 Qt 开发图形界面程序，通过 HTTPS 使用自签证书的 EasyProxy 代理来连接网站。
+EasyProxyClient 是面向 [EasyProxy](https://github.com/SwartzMss/EasyProxy) 的客户端示例。项目使用 Qt 开发图形界面程序，通过 HTTPS 使用自签证书的 EasyProxy 代理来连接网站。
 
-在界面中，可以输入目标网址，并配置以下信息：
-- 代理的 IP/域名 和端口
-- 代理用户名与密码
-- 自签的 CA 证书文件
+## 使用说明
 
-程序会根据这些信息自动配置网络请求，使用户能安全地通过 EasyProxy 访问指定网站。
+1. **配置目标网址**: 在"目标网址"输入框中输入要访问的网站地址
+2. **配置代理设置**: 
+   - 输入代理服务器的IP地址或域名
+   - 设置代理端口（默认8080）
+   - 如果代理需要认证，输入用户名和密码
+3. **配置SSL证书**: 点击"浏览"按钮选择自签的CA证书文件（.pem, .crt, .cer格式）
+4. **发起连接**: 点击"连接"按钮开始网络请求
+5. **查看结果**: 在"响应结果"区域查看服务器返回的内容
 
-## 特色
-- 展示如何配合 EasyProxy 使用
-- 并非 CLI，以 Qt 实现的 GUI
-- 支持加载自签证书，进行 HTTPS 互动
+## 功能特性
+
+- **代理支持**: 支持HTTP代理，包括认证功能
+- **SSL/TLS支持**: 支持自签证书，确保HTTPS连接安全
+- **实时反馈**: 显示连接进度和状态信息
+- **错误处理**: 完善的错误提示和SSL错误处理
+- **响应显示**: 智能识别内容类型，支持文本和二进制内容显示
+
+
+## 贡献
+
+欢迎提交Issue和Pull Request来改进这个项目。
 
 ## License
+
 MIT License
