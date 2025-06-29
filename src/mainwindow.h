@@ -37,6 +37,7 @@ private slots:
     void onConnectionFinished(bool success, const QString &result);
     void onSslErrors(const QString &errorMessage);
     void onNetworkError(const QString &errorMessage);
+    void onDebugMessage(const QString &message);
     
     // 配置相关槽函数
     void saveSettings();
@@ -79,8 +80,8 @@ private:
     QPushButton *saveConfigButton;
     QProgressBar *progressBar;
     
-    // 结果显示
-    QTextEdit *resultText;
+    // 调试信息显示
+    QTextEdit *debugText;
     
     // 菜单
     QMenu *fileMenu;

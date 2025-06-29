@@ -11,6 +11,7 @@
 #include <QSslError>
 #include <QString>
 #include <QTimer>
+#include <QStringList>
 
 class ProxyClient : public QObject
 {
@@ -49,6 +50,9 @@ signals:
     
     // 网络错误
     void networkError(const QString &errorMessage);
+    
+    // 实时调试信息
+    void debugMessage(const QString &message);
 
 private slots:
     void handleSslSocketConnected();
@@ -91,6 +95,10 @@ private:
     
     // 缓冲区
     QByteArray responseBuffer;
+    
+    // 调试信息收集
+    QStringList debugMessages;
+    void addDebugMessage(const QString &message);
 };
 
 #endif // PROXYCLIENT_H 

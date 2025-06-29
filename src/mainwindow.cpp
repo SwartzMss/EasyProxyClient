@@ -104,13 +104,14 @@ void MainWindow::setupUI()
     
     mainLayout->addLayout(controlLayout);
     
-    // 结果显示
-    QGroupBox *resultGroup = new QGroupBox("响应结果", centralWidget);
-    QVBoxLayout *resultLayout = new QVBoxLayout(resultGroup);
-    resultText = new QTextEdit(resultGroup);
-    resultText->setReadOnly(true);
-    resultLayout->addWidget(resultText);
-    mainLayout->addWidget(resultGroup);
+    // 调试信息显示
+    QGroupBox *debugGroup = new QGroupBox("连接状态", centralWidget);
+    QVBoxLayout *debugLayout = new QVBoxLayout(debugGroup);
+    debugText = new QTextEdit(debugGroup);
+    debugText->setReadOnly(true);
+    debugText->setFont(QFont("Consolas", 9));
+    debugLayout->addWidget(debugText);
+    mainLayout->addWidget(debugGroup);
 }
 
 void MainWindow::setupMenuBar()
@@ -151,6 +152,7 @@ void MainWindow::setupConnections()
     connect(proxyClient, &ProxyClient::connectionFinished, this, &MainWindow::onConnectionFinished);
     connect(proxyClient, &ProxyClient::sslErrors, this, &MainWindow::onSslErrors);
     connect(proxyClient, &ProxyClient::networkError, this, &MainWindow::onNetworkError);
+    connect(proxyClient, &ProxyClient::debugMessage, this, &MainWindow::onDebugMessage);
 }
 
 void MainWindow::loadConfigToUI()
@@ -216,8 +218,8 @@ void MainWindow::connectToProxy()
         return;
     }
     
-    // 清空之前的结果
-    resultText->clear();
+    // 清空之前的调试信息
+    debugText->clear();
     
     // 配置代理客户端
     proxyClient->setProxySettings(
@@ -250,8 +252,12 @@ void MainWindow::onConnectionFinished(bool success, const QString &result)
     progressBar->setVisible(false);
     connectButton->setEnabled(true);
     
-    // 显示结果
-    resultText->setText(result);
+    // 只显示最终状态，不重复显示结果
+    if (success) {
+        debugText->append("\n=== 连接成功 ===\n");
+    } else {
+        debugText->append("\n=== 连接失败 ===\n");
+    }
 }
 
 void MainWindow::onSslErrors(const QString &errorMessage)
@@ -262,6 +268,11 @@ void MainWindow::onSslErrors(const QString &errorMessage)
 void MainWindow::onNetworkError(const QString &errorMessage)
 {
     showError(errorMessage);
+}
+
+void MainWindow::onDebugMessage(const QString &message)
+{
+    debugText->append(message);
 }
 
 void MainWindow::saveSettings()

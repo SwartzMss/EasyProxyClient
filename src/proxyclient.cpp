@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QDateTime>
 
 ProxyClient::ProxyClient(QObject *parent)
     : QObject(parent)
@@ -62,6 +63,17 @@ void ProxyClient::setSslCertificate(const QString &certPath)
     certificatePath = certPath;
 }
 
+void ProxyClient::addDebugMessage(const QString &message)
+{
+    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
+    QString fullMessage = QString("[%1] %2").arg(timestamp).arg(message);
+    debugMessages.append(fullMessage);
+    qDebug() << message;
+    
+    // 实时发送调试信息到GUI
+    emit debugMessage(fullMessage);
+}
+
 void ProxyClient::connectToUrl(const QString &url)
 {
     // 检查是否已经在连接
@@ -103,6 +115,11 @@ void ProxyClient::connectToUrl(const QString &url)
     connectRequestSent = false;
     connectResponseReceived = false;
     responseBuffer.clear();
+    debugMessages.clear();
+    
+    addDebugMessage("开始连接流程");
+    addDebugMessage(QString("目标URL: %1").arg(url));
+    addDebugMessage(QString("代理服务器: %1:%2").arg(proxyHost).arg(proxyPort));
     
     emit connectionStarted();
     
@@ -114,9 +131,7 @@ void ProxyClient::connectToUrl(const QString &url)
     sslSocket->setSslConfiguration(sslConfig);
     
     // 连接到代理服务器
-    QString msg = QString("正在连接到HTTPS代理: %1:%2").arg(proxyHost).arg(proxyPort);
-    qDebug() << msg;
-    emit networkError(msg);
+    addDebugMessage(QString("正在连接到HTTPS代理: %1:%2").arg(proxyHost).arg(proxyPort));
     sslSocket->connectToHostEncrypted(proxyHost, proxyPort);
 }
 
@@ -152,13 +167,13 @@ QSslConfiguration ProxyClient::createSslConfiguration()
                 QList<QSslCertificate> caCerts = sslConfig.caCertificates();
                 caCerts.append(cert);
                 sslConfig.setCaCertificates(caCerts);
-                qDebug() << "CA证书已加载:" << certificatePath;
+                addDebugMessage("CA证书已加载:" + certificatePath);
             } else {
-                qDebug() << "警告: 无法加载CA证书:" << certificatePath;
+                addDebugMessage("警告: 无法加载CA证书:" + certificatePath);
             }
             certFile.close();
         } else {
-            qDebug() << "警告: 无法打开证书文件:" << certificatePath;
+            addDebugMessage("警告: 无法打开证书文件:" + certificatePath);
         }
     }
     
@@ -170,14 +185,13 @@ QSslConfiguration ProxyClient::createSslConfiguration()
 
 void ProxyClient::handleSslSocketConnected()
 {
-    QString msg = "SSL Socket已连接 - TLS握手成功";
-    qDebug() << msg;
-    emit networkError(msg); // 临时使用networkError信号显示调试信息
+    addDebugMessage("SSL Socket已连接 - TLS握手成功");
     
     tlsConnected = true;
     
-    // TLS连接建立后，发送CONNECT请求
-    sendConnectRequest();
+    // TLS连接建立后，等待一小段时间确保连接稳定，然后发送CONNECT请求
+    addDebugMessage("准备发送CONNECT请求...");
+    QTimer::singleShot(100, this, &ProxyClient::sendConnectRequest);
 }
 
 void ProxyClient::handleSslSocketDisconnected()
@@ -188,8 +202,7 @@ void ProxyClient::handleSslSocketDisconnected()
         .arg(connectRequestSent)
         .arg(connectResponseReceived);
     
-    qDebug() << msg;
-    emit networkError(msg); // 临时使用networkError信号显示调试信息
+    addDebugMessage(msg);
     
     if (connecting) {
         connecting = false;
@@ -203,8 +216,7 @@ void ProxyClient::handleSslSocketError(QAbstractSocket::SocketError error)
     QString errorMsg = QString("Socket错误: %1 - %2")
         .arg(error)
         .arg(sslSocket->errorString());
-    qDebug() << errorMsg;
-    emit networkError(errorMsg);
+    addDebugMessage(errorMsg);
     
     if (connecting) {
         connecting = false;
@@ -220,9 +232,8 @@ void ProxyClient::handleSslErrors(const QList<QSslError> &errors)
         errorMsg += QString("- %1\n").arg(error.errorString());
     }
     
-    qDebug() << errorMsg;
+    addDebugMessage(errorMsg);
     emit sslErrors(errorMsg);
-    emit networkError(errorMsg); // 同时发送到GUI
     
     // 忽略SSL错误继续连接
     sslSocket->ignoreSslErrors();
@@ -231,11 +242,14 @@ void ProxyClient::handleSslErrors(const QList<QSslError> &errors)
 void ProxyClient::handleSslSocketReadyRead()
 {
     QByteArray data = sslSocket->readAll();
+    addDebugMessage(QString("收到数据，长度: %1 字节").arg(data.size()));
     responseBuffer.append(data);
     
     if (!connectResponseReceived) {
+        addDebugMessage("解析CONNECT响应...");
         parseConnectResponse();
     } else {
+        addDebugMessage("解析HTTP响应...");
         parseHttpResponse();
     }
 }
@@ -258,7 +272,7 @@ void ProxyClient::sendConnectRequest()
         return;
     }
     
-    // 构建CONNECT请求
+    // 构建CONNECT请求 - 使用标准格式
     QString connectRequest = QString("CONNECT %1:%2 HTTP/1.1\r\n")
         .arg(targetHost)
         .arg(targetPort);
@@ -275,14 +289,17 @@ void ProxyClient::sendConnectRequest()
             .arg(QString::fromUtf8(authBase64));
     }
     
-    connectRequest += "Connection: keep-alive\r\n\r\n";
+    // 添加更多标准头部
+    connectRequest += "User-Agent: EasyProxyClient/1.0.0\r\n";
+    connectRequest += "Connection: keep-alive\r\n";
+    connectRequest += "\r\n";
     
-    QString msg = "发送CONNECT请求: " + connectRequest;
-    qDebug() << msg;
-    emit networkError(msg);
+    addDebugMessage("发送CONNECT请求: " + connectRequest);
     
     // 发送CONNECT请求
-    sslSocket->write(connectRequest.toUtf8());
+    int bytesWritten = sslSocket->write(connectRequest.toUtf8());
+    addDebugMessage(QString("CONNECT请求已发送，字节数: %1").arg(bytesWritten));
+    
     connectRequestSent = true;
 }
 
@@ -291,6 +308,7 @@ void ProxyClient::parseConnectResponse()
     // 查找HTTP响应结束标记
     int endIndex = responseBuffer.indexOf("\r\n\r\n");
     if (endIndex == -1) {
+        addDebugMessage("CONNECT响应不完整，等待更多数据...");
         return; // 响应不完整，等待更多数据
     }
     
@@ -298,12 +316,11 @@ void ProxyClient::parseConnectResponse()
     QByteArray responseHeaders = responseBuffer.left(endIndex);
     QString responseStr = QString::fromUtf8(responseHeaders);
     
-    QString msg = "收到CONNECT响应: " + responseStr;
-    qDebug() << msg;
-    emit networkError(msg);
+    addDebugMessage("收到CONNECT响应: " + responseStr);
     
     // 检查响应状态
     if (responseStr.contains("200 Connection Established")) {
+        addDebugMessage("CONNECT请求成功，准备发送HTTP请求...");
         connectResponseReceived = true;
         responseBuffer.remove(0, endIndex + 4); // 移除响应头
         
@@ -311,6 +328,7 @@ void ProxyClient::parseConnectResponse()
         sendHttpRequest();
     } else {
         // CONNECT失败
+        addDebugMessage("CONNECT请求失败: " + responseStr);
         connecting = false;
         connectionTimer->stop();
         emit connectionFinished(false, "CONNECT请求失败: " + responseStr);
@@ -319,6 +337,8 @@ void ProxyClient::parseConnectResponse()
 
 void ProxyClient::sendHttpRequest()
 {
+    addDebugMessage("开始构建HTTP请求...");
+    
     // 构建HTTP请求
     QUrl url(targetUrl);
     QString request = QString("GET %1 HTTP/1.1\r\n")
@@ -329,14 +349,13 @@ void ProxyClient::sendHttpRequest()
     request += "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n";
     request += "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8\r\n";
     request += "Accept-Encoding: gzip, deflate\r\n";
-    request += "Connection: close\r\n\r\n";
+    request += "Connection: keep-alive\r\n\r\n";
     
-    QString msg = "发送HTTP请求: " + request;
-    qDebug() << msg;
-    emit networkError(msg);
+    addDebugMessage("发送HTTP请求: " + request);
     
     // 发送HTTP请求
-    sslSocket->write(request.toUtf8());
+    int bytesWritten = sslSocket->write(request.toUtf8());
+    addDebugMessage(QString("HTTP请求已发送，字节数: %1").arg(bytesWritten));
 }
 
 void ProxyClient::parseHttpResponse()
@@ -351,17 +370,37 @@ void ProxyClient::parseHttpResponse()
     QByteArray responseHeaders = responseBuffer.left(endIndex);
     QString responseStr = QString::fromUtf8(responseHeaders);
     
-    QString msg = "收到HTTP响应头: " + responseStr;
-    qDebug() << msg;
-    emit networkError(msg);
+    addDebugMessage("收到HTTP响应头: " + responseStr);
     
     // 检查响应状态
     if (responseStr.contains("200 OK")) {
         // 提取响应体
         QByteArray responseBody = responseBuffer.mid(endIndex + 4);
         
+        // 检查是否有Content-Length头
+        int contentLength = -1;
+        if (responseStr.contains("Content-Length:")) {
+            int clIndex = responseStr.indexOf("Content-Length:");
+            int clEndIndex = responseStr.indexOf("\r\n", clIndex);
+            if (clEndIndex == -1) clEndIndex = responseStr.indexOf("\n", clIndex);
+            if (clEndIndex != -1) {
+                QString clStr = responseStr.mid(clIndex + 15, clEndIndex - clIndex - 15).trimmed();
+                contentLength = clStr.toInt();
+            }
+        }
+        
+        // 如果指定了Content-Length，等待完整响应体
+        if (contentLength > 0 && responseBody.size() < contentLength) {
+            return; // 等待更多数据
+        }
+        
         // 构建完整响应信息
-        QString result = QString("状态码: 200 OK\n");
+        QString result = QString("=== 连接状态 ===\n");
+        result += QString("TLS连接: 成功\n");
+        result += QString("CONNECT请求: 成功\n");
+        result += QString("HTTP请求: 成功\n\n");
+        result += QString("=== 响应信息 ===\n");
+        result += QString("状态码: 200 OK\n");
         result += QString("内容长度: %1 字节\n\n").arg(responseBody.size());
         
         // 如果是文本内容，直接显示
@@ -377,6 +416,7 @@ void ProxyClient::parseHttpResponse()
         }
         
         result += QString("内容类型: %1\n\n").arg(contentType);
+        result += QString("=== 网页内容 ===\n");
         
         if (contentType.contains("text") || contentType.contains("json") || contentType.contains("xml")) {
             result += QString::fromUtf8(responseBody);
@@ -387,6 +427,9 @@ void ProxyClient::parseHttpResponse()
         connecting = false;
         connectionTimer->stop();
         emit connectionFinished(true, result);
+        
+        // 关闭连接
+        sslSocket->disconnectFromHost();
     } else {
         // HTTP请求失败
         connecting = false;
