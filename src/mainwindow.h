@@ -7,15 +7,17 @@
 #include <QTextEdit>
 #include <QLabel>
 #include <QFileDialog>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QSslConfiguration>
 #include <QMessageBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QProgressBar>
+#include <QMenuBar>
+#include <QMenu>
+#include <QAction>
+#include "proxyclient.h"
+#include "configmanager.h"
 
 class MainWindow : public QMainWindow
 {
@@ -25,17 +27,31 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private slots:
     void browseCertificate();
     void connectToProxy();
-    void handleNetworkReply(QNetworkReply *reply);
-    void handleSslErrors(const QList<QSslError> &errors);
+    void onConnectionStarted();
+    void onConnectionFinished(bool success, const QString &result);
+    void onSslErrors(const QString &errorMessage);
+    void onNetworkError(const QString &errorMessage);
+    
+    // 配置相关槽函数
+    void saveSettings();
+    void loadSettings();
+    void resetSettings();
+    void about();
+    void saveConfigButtonClicked();
 
 private:
     void setupUI();
+    void setupMenuBar();
     void setupConnections();
-    QSslConfiguration createSslConfiguration();
     void showError(const QString &message);
+    void loadConfigToUI();
+    void saveConfigFromUI();
 
     // UI组件
     QWidget *centralWidget;
@@ -58,17 +74,24 @@ private:
     QPushButton *browseButton;
     
     // 控制按钮
+    QHBoxLayout *controlLayout;
     QPushButton *connectButton;
+    QPushButton *saveConfigButton;
     QProgressBar *progressBar;
     
     // 结果显示
     QTextEdit *resultText;
     
-    // 网络管理器
-    QNetworkAccessManager *networkManager;
+    // 菜单
+    QMenu *fileMenu;
+    QMenu *settingsMenu;
+    QMenu *helpMenu;
     
-    // 当前网络回复对象
-    QNetworkReply *currentReply;
+    // 代理客户端
+    ProxyClient *proxyClient;
+    
+    // 配置管理器
+    ConfigManager *configManager;
 };
 
 #endif // MAINWINDOW_H 

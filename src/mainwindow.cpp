@@ -1,27 +1,36 @@
 #include "mainwindow.h"
 #include <QApplication>
-#include <QNetworkProxy>
-#include <QSslSocket>
-#include <QFile>
-#include <QTextStream>
-#include <QDebug>
+#include <QCloseEvent>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , networkManager(new QNetworkAccessManager(this))
-    , currentReply(nullptr)
+    , proxyClient(new ProxyClient(this))
+    , configManager(new ConfigManager(this))
 {
     setupUI();
+    setupMenuBar();
     setupConnections();
+    loadConfigToUI();
     
     // 设置窗口属性
     setWindowTitle("EasyProxyClient");
     setMinimumSize(600, 500);
-    resize(800, 600);
+    
+    // 从配置加载窗口大小
+    int width, height;
+    configManager->getWindowSize(width, height);
+    resize(width, height);
 }
 
 MainWindow::~MainWindow()
 {
+    saveConfigFromUI();
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    saveConfigFromUI();
+    event->accept();
 }
 
 void MainWindow::setupUI()
@@ -51,7 +60,6 @@ void MainWindow::setupUI()
     proxyLayout->addWidget(new QLabel("代理端口:"), 0, 2);
     proxyPortEdit = new QLineEdit(proxyGroup);
     proxyPortEdit->setPlaceholderText("端口");
-    proxyPortEdit->setText("8080");
     proxyLayout->addWidget(proxyPortEdit, 0, 3);
     
     proxyLayout->addWidget(new QLabel("用户名:"), 1, 0);
@@ -81,10 +89,14 @@ void MainWindow::setupUI()
     mainLayout->addWidget(certificateGroup);
     
     // 控制按钮
-    QHBoxLayout *controlLayout = new QHBoxLayout();
+    controlLayout = new QHBoxLayout();
     connectButton = new QPushButton("连接", centralWidget);
     connectButton->setMinimumHeight(40);
     controlLayout->addWidget(connectButton);
+    
+    saveConfigButton = new QPushButton("保存配置", centralWidget);
+    saveConfigButton->setMinimumHeight(40);
+    controlLayout->addWidget(saveConfigButton);
     
     progressBar = new QProgressBar(centralWidget);
     progressBar->setVisible(false);
@@ -101,11 +113,80 @@ void MainWindow::setupUI()
     mainLayout->addWidget(resultGroup);
 }
 
+void MainWindow::setupMenuBar()
+{
+    QMenuBar *menuBar = this->menuBar();
+    
+    // 文件菜单
+    fileMenu = menuBar->addMenu("文件(&F)");
+    QAction *saveAction = fileMenu->addAction("保存设置(&S)");
+    QAction *loadAction = fileMenu->addAction("加载设置(&L)");
+    fileMenu->addSeparator();
+    QAction *exitAction = fileMenu->addAction("退出(&X)");
+    
+    // 设置菜单
+    settingsMenu = menuBar->addMenu("设置(&S)");
+    QAction *resetAction = settingsMenu->addAction("重置为默认值(&R)");
+    
+    // 帮助菜单
+    helpMenu = menuBar->addMenu("帮助(&H)");
+    QAction *aboutAction = helpMenu->addAction("关于(&A)");
+    
+    // 连接菜单信号
+    connect(saveAction, &QAction::triggered, this, &MainWindow::saveSettings);
+    connect(loadAction, &QAction::triggered, this, &MainWindow::loadSettings);
+    connect(exitAction, &QAction::triggered, []() { QApplication::quit(); });
+    connect(resetAction, &QAction::triggered, this, &MainWindow::resetSettings);
+    connect(aboutAction, &QAction::triggered, this, &MainWindow::about);
+}
+
 void MainWindow::setupConnections()
 {
     connect(browseButton, &QPushButton::clicked, this, &MainWindow::browseCertificate);
     connect(connectButton, &QPushButton::clicked, this, &MainWindow::connectToProxy);
-    connect(networkManager, &QNetworkAccessManager::finished, this, &MainWindow::handleNetworkReply);
+    connect(saveConfigButton, &QPushButton::clicked, this, &MainWindow::saveConfigButtonClicked);
+    
+    // 连接代理客户端信号
+    connect(proxyClient, &ProxyClient::connectionStarted, this, &MainWindow::onConnectionStarted);
+    connect(proxyClient, &ProxyClient::connectionFinished, this, &MainWindow::onConnectionFinished);
+    connect(proxyClient, &ProxyClient::sslErrors, this, &MainWindow::onSslErrors);
+    connect(proxyClient, &ProxyClient::networkError, this, &MainWindow::onNetworkError);
+}
+
+void MainWindow::loadConfigToUI()
+{
+    // 加载代理设置
+    proxyHostEdit->setText(configManager->getProxyHost());
+    proxyPortEdit->setText(QString::number(configManager->getProxyPort()));
+    usernameEdit->setText(configManager->getProxyUsername());
+    passwordEdit->setText(configManager->getProxyPassword());
+    
+    // 加载SSL证书设置
+    certificatePathEdit->setText(configManager->getCertificatePath());
+    
+    // 加载最后使用的URL
+    urlEdit->setText(configManager->getLastUrl());
+}
+
+void MainWindow::saveConfigFromUI()
+{
+    // 保存代理设置
+    configManager->setProxyHost(proxyHostEdit->text());
+    configManager->setProxyPort(proxyPortEdit->text().toInt());
+    configManager->setProxyUsername(usernameEdit->text());
+    configManager->setProxyPassword(passwordEdit->text());
+    
+    // 保存SSL证书设置
+    configManager->setCertificatePath(certificatePathEdit->text());
+    
+    // 保存最后使用的URL
+    configManager->setLastUrl(urlEdit->text());
+    
+    // 保存窗口大小
+    configManager->setWindowSize(width(), height());
+    
+    // 保存配置
+    configManager->saveConfig();
 }
 
 void MainWindow::browseCertificate()
@@ -119,7 +200,7 @@ void MainWindow::browseCertificate()
 
 void MainWindow::connectToProxy()
 {
-    // 验证输入
+    // 基本输入验证
     if (urlEdit->text().isEmpty()) {
         showError("请输入目标网址");
         return;
@@ -138,117 +219,93 @@ void MainWindow::connectToProxy()
     // 清空之前的结果
     resultText->clear();
     
+    // 配置代理客户端
+    proxyClient->setProxySettings(
+        proxyHostEdit->text(),
+        proxyPortEdit->text().toInt(),
+        usernameEdit->text(),
+        passwordEdit->text()
+    );
+    
+    // 配置SSL证书
+    if (!certificatePathEdit->text().isEmpty()) {
+        proxyClient->setSslCertificate(certificatePathEdit->text());
+    }
+    
+    // 发起连接
+    proxyClient->connectToUrl(urlEdit->text());
+}
+
+void MainWindow::onConnectionStarted()
+{
     // 显示进度条
     progressBar->setVisible(true);
     progressBar->setRange(0, 0); // 不确定进度
     connectButton->setEnabled(false);
-    
-    // 配置代理
-    QNetworkProxy proxy;
-    proxy.setType(QNetworkProxy::HttpProxy);
-    proxy.setHostName(proxyHostEdit->text());
-    proxy.setPort(proxyPortEdit->text().toInt());
-    
-    if (!usernameEdit->text().isEmpty()) {
-        proxy.setUser(usernameEdit->text());
-        proxy.setPassword(passwordEdit->text());
-    }
-    
-    networkManager->setProxy(proxy);
-    
-    // 创建请求
-    QNetworkRequest request(QUrl(urlEdit->text()));
-    
-    // 配置SSL
-    if (!certificatePathEdit->text().isEmpty()) {
-        QSslConfiguration sslConfig = createSslConfiguration();
-        request.setSslConfiguration(sslConfig);
-    }
-    
-    // 发送请求
-    currentReply = networkManager->get(request);
-    
-    // 连接SSL错误信号
-    connect(currentReply, &QNetworkReply::sslErrors, this, &MainWindow::handleSslErrors);
 }
 
-QSslConfiguration MainWindow::createSslConfiguration()
-{
-    QSslConfiguration sslConfig = QSslConfiguration::defaultConfiguration();
-    
-    // 加载CA证书
-    QFile certFile(certificatePathEdit->text());
-    if (certFile.open(QIODevice::ReadOnly)) {
-        QSslCertificate cert(&certFile);
-        if (!cert.isNull()) {
-            QList<QSslCertificate> caCerts = sslConfig.caCertificates();
-            caCerts.append(cert);
-            sslConfig.setCaCertificates(caCerts);
-        }
-        certFile.close();
-    }
-    
-    // 设置SSL选项
-    sslConfig.setPeerVerifyMode(QSslSocket::VerifyPeer);
-    
-    return sslConfig;
-}
-
-void MainWindow::handleNetworkReply(QNetworkReply *reply)
+void MainWindow::onConnectionFinished(bool success, const QString &result)
 {
     // 隐藏进度条
     progressBar->setVisible(false);
     connectButton->setEnabled(true);
     
-    if (reply->error() == QNetworkReply::NoError) {
-        // 读取响应内容
-        QByteArray data = reply->readAll();
-        QString contentType = reply->header(QNetworkRequest::ContentTypeHeader).toString();
-        
-        // 显示响应信息
-        QString result = QString("状态码: %1\n").arg(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt());
-        result += QString("内容类型: %1\n").arg(contentType);
-        result += QString("内容长度: %1 字节\n\n").arg(data.size());
-        
-        // 如果是文本内容，直接显示
-        if (contentType.contains("text") || contentType.contains("json") || contentType.contains("xml")) {
-            result += QString::fromUtf8(data);
-        } else {
-            result += "[二进制内容，无法显示]";
-        }
-        
-        resultText->setText(result);
-    } else {
-        QString errorMsg = QString("网络错误: %1\n%2")
-            .arg(reply->error())
-            .arg(reply->errorString());
-        resultText->setText(errorMsg);
-    }
-    
-    // 清理当前回复对象
-    if (reply == currentReply) {
-        currentReply = nullptr;
-    }
-    
-    reply->deleteLater();
+    // 显示结果
+    resultText->setText(result);
 }
 
-void MainWindow::handleSslErrors(const QList<QSslError> &errors)
+void MainWindow::onSslErrors(const QString &errorMessage)
 {
-    QString errorMsg = "SSL错误:\n";
-    for (const QSslError &error : errors) {
-        errorMsg += QString("- %1\n").arg(error.errorString());
+    QMessageBox::warning(this, "SSL错误", errorMessage);
+}
+
+void MainWindow::onNetworkError(const QString &errorMessage)
+{
+    showError(errorMessage);
+}
+
+void MainWindow::saveSettings()
+{
+    saveConfigFromUI();
+    QMessageBox::information(this, "保存设置", "设置已保存");
+}
+
+void MainWindow::loadSettings()
+{
+    loadConfigToUI();
+    QMessageBox::information(this, "加载设置", "设置已加载");
+}
+
+void MainWindow::resetSettings()
+{
+    int ret = QMessageBox::question(this, "重置设置", 
+                                   "确定要重置所有设置为默认值吗？",
+                                   QMessageBox::Yes | QMessageBox::No);
+    if (ret == QMessageBox::Yes) {
+        configManager->resetToDefaults();
+        loadConfigToUI();
+        QMessageBox::information(this, "重置设置", "设置已重置为默认值");
     }
-    
-    QMessageBox::warning(this, "SSL错误", errorMsg);
-    
-    // 可以选择忽略SSL错误继续连接
-    if (currentReply) {
-        currentReply->ignoreSslErrors();
-    }
+}
+
+void MainWindow::about()
+{
+    QMessageBox::about(this, "关于 EasyProxyClient",
+        "EasyProxyClient v1.0.0\n\n"
+        "一个用于连接 EasyProxy 的客户端程序\n"
+        "支持 HTTP 代理和 SSL 证书配置\n\n"
+        "基于 Qt 6 开发\n"
+        "MIT License");
 }
 
 void MainWindow::showError(const QString &message)
 {
     QMessageBox::warning(this, "错误", message);
+}
+
+void MainWindow::saveConfigButtonClicked()
+{
+    saveConfigFromUI();
+    QMessageBox::information(this, "保存配置", 
+        QString("配置已保存到:\n%1").arg(QApplication::applicationDirPath() + "/config.ini"));
 } 

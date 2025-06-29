@@ -1,6 +1,6 @@
 QT += core widgets network
 
-CONFIG += c++17
+CONFIG += c++11
 
 # 项目信息
 TARGET = EasyProxyClient
@@ -9,10 +9,14 @@ TEMPLATE = app
 # 源文件
 SOURCES += \
     src/main.cpp \
-    src/mainwindow.cpp
+    src/mainwindow.cpp \
+    src/proxyclient.cpp \
+    src/configmanager.cpp
 
 HEADERS += \
-    src/mainwindow.h
+    src/mainwindow.h \
+    src/proxyclient.h \
+    src/configmanager.h
 
 # Windows特定设置
 win32 {
@@ -28,14 +32,6 @@ CONFIG(debug, debug|release) {
 } else {
     DESTDIR = $$PWD/bin/release
 }
-
-# 编译器警告设置
-win32-msvc {
-    QMAKE_CXXFLAGS += /W4
-}
-
-# 定义
-DEFINES += QT_DEPRECATED_WARNINGS
 
 # 自动生成的文件目录
 MOC_DIR = build/moc
