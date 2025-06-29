@@ -2,15 +2,15 @@
 #define PROXYCLIENT_H
 
 #include <QObject>
-#include <QNetworkAccessManager>
+#include <QSslSocket>
 #include <QNetworkReply>
-#include <QNetworkProxy>
 #include <QNetworkRequest>
 #include <QUrl>
 #include <QSslConfiguration>
 #include <QSslCertificate>
 #include <QSslError>
 #include <QString>
+#include <QTimer>
 
 class ProxyClient : public QObject
 {
@@ -51,15 +51,23 @@ signals:
     void networkError(const QString &errorMessage);
 
 private slots:
-    void handleNetworkReply(QNetworkReply *reply);
+    void handleSslSocketConnected();
+    void handleSslSocketDisconnected();
+    void handleSslSocketError(QAbstractSocket::SocketError error);
     void handleSslErrors(const QList<QSslError> &errors);
+    void handleSslSocketReadyRead();
+    void handleConnectionTimeout();
 
 private:
     QSslConfiguration createSslConfiguration();
+    void sendConnectRequest();
+    void parseConnectResponse();
+    void sendHttpRequest();
+    void parseHttpResponse();
     void showError(const QString &message);
 
-    QNetworkAccessManager *networkManager;
-    QNetworkReply *currentReply;
+    QSslSocket *sslSocket;
+    QTimer *connectionTimer;
     
     // 代理设置
     QString proxyHost;
@@ -70,8 +78,19 @@ private:
     // SSL设置
     QString certificatePath;
     
+    // 目标URL
+    QString targetUrl;
+    QString targetHost;
+    int targetPort;
+    
     // 状态
     bool connecting;
+    bool tlsConnected;
+    bool connectRequestSent;
+    bool connectResponseReceived;
+    
+    // 缓冲区
+    QByteArray responseBuffer;
 };
 
 #endif // PROXYCLIENT_H 
