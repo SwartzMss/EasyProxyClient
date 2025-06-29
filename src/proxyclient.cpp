@@ -114,7 +114,9 @@ void ProxyClient::connectToUrl(const QString &url)
     sslSocket->setSslConfiguration(sslConfig);
     
     // 连接到代理服务器
-    qDebug() << "正在连接到HTTPS代理:" << proxyHost << ":" << proxyPort;
+    QString msg = QString("正在连接到HTTPS代理: %1:%2").arg(proxyHost).arg(proxyPort);
+    qDebug() << msg;
+    emit networkError(msg);
     sslSocket->connectToHostEncrypted(proxyHost, proxyPort);
 }
 
@@ -160,17 +162,18 @@ QSslConfiguration ProxyClient::createSslConfiguration()
         }
     }
     
-    // 设置SSL选项
-    sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone); // 不验证对等证书
-    sslConfig.setProtocol(QSsl::TlsV1_2); // 使用TLS 1.2
-    sslConfig.setProtocol(QSsl::TlsV1_3); // 也支持TLS 1.3
+    // 设置SSL选项 - 不验证对等证书，让Qt自动协商协议
+    sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
     
     return sslConfig;
 }
 
 void ProxyClient::handleSslSocketConnected()
 {
-    qDebug() << "SSL Socket已连接";
+    QString msg = "SSL Socket已连接 - TLS握手成功";
+    qDebug() << msg;
+    emit networkError(msg); // 临时使用networkError信号显示调试信息
+    
     tlsConnected = true;
     
     // TLS连接建立后，发送CONNECT请求
@@ -179,7 +182,15 @@ void ProxyClient::handleSslSocketConnected()
 
 void ProxyClient::handleSslSocketDisconnected()
 {
-    qDebug() << "SSL Socket已断开连接";
+    QString msg = QString("SSL Socket已断开连接 - 连接状态:%1, TLS连接:%2, CONNECT请求已发送:%3, CONNECT响应已接收:%4")
+        .arg(connecting)
+        .arg(tlsConnected)
+        .arg(connectRequestSent)
+        .arg(connectResponseReceived);
+    
+    qDebug() << msg;
+    emit networkError(msg); // 临时使用networkError信号显示调试信息
+    
     if (connecting) {
         connecting = false;
         connectionTimer->stop();
@@ -193,6 +204,7 @@ void ProxyClient::handleSslSocketError(QAbstractSocket::SocketError error)
         .arg(error)
         .arg(sslSocket->errorString());
     qDebug() << errorMsg;
+    emit networkError(errorMsg);
     
     if (connecting) {
         connecting = false;
@@ -210,6 +222,7 @@ void ProxyClient::handleSslErrors(const QList<QSslError> &errors)
     
     qDebug() << errorMsg;
     emit sslErrors(errorMsg);
+    emit networkError(errorMsg); // 同时发送到GUI
     
     // 忽略SSL错误继续连接
     sslSocket->ignoreSslErrors();
@@ -264,7 +277,9 @@ void ProxyClient::sendConnectRequest()
     
     connectRequest += "Connection: keep-alive\r\n\r\n";
     
-    qDebug() << "发送CONNECT请求:" << connectRequest;
+    QString msg = "发送CONNECT请求: " + connectRequest;
+    qDebug() << msg;
+    emit networkError(msg);
     
     // 发送CONNECT请求
     sslSocket->write(connectRequest.toUtf8());
@@ -283,7 +298,9 @@ void ProxyClient::parseConnectResponse()
     QByteArray responseHeaders = responseBuffer.left(endIndex);
     QString responseStr = QString::fromUtf8(responseHeaders);
     
-    qDebug() << "收到CONNECT响应:" << responseStr;
+    QString msg = "收到CONNECT响应: " + responseStr;
+    qDebug() << msg;
+    emit networkError(msg);
     
     // 检查响应状态
     if (responseStr.contains("200 Connection Established")) {
@@ -314,7 +331,9 @@ void ProxyClient::sendHttpRequest()
     request += "Accept-Encoding: gzip, deflate\r\n";
     request += "Connection: close\r\n\r\n";
     
-    qDebug() << "发送HTTP请求:" << request;
+    QString msg = "发送HTTP请求: " + request;
+    qDebug() << msg;
+    emit networkError(msg);
     
     // 发送HTTP请求
     sslSocket->write(request.toUtf8());
@@ -332,7 +351,9 @@ void ProxyClient::parseHttpResponse()
     QByteArray responseHeaders = responseBuffer.left(endIndex);
     QString responseStr = QString::fromUtf8(responseHeaders);
     
-    qDebug() << "收到HTTP响应头:" << responseStr;
+    QString msg = "收到HTTP响应头: " + responseStr;
+    qDebug() << msg;
+    emit networkError(msg);
     
     // 检查响应状态
     if (responseStr.contains("200 OK")) {
