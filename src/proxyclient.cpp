@@ -22,8 +22,10 @@ ProxyClient::ProxyClient(QObject *parent)
     , connectResponseReceived(false)
 {
     // 连接SSL Socket信号
-    connect(sslSocket, &QSslSocket::connected, 
+    connect(sslSocket, &QSslSocket::connected,
             this, &ProxyClient::handleSslSocketConnected);
+    connect(sslSocket, &QSslSocket::encrypted,
+            this, &ProxyClient::handleSslSocketEncrypted);
     connect(sslSocket, &QSslSocket::disconnected, 
             this, &ProxyClient::handleSslSocketDisconnected);
     connect(sslSocket, &QSslSocket::errorOccurred,
@@ -132,7 +134,7 @@ void ProxyClient::connectToUrl(const QString &url)
     
     // 连接到代理服务器
     addDebugMessage(QString("正在连接到HTTPS代理: %1:%2").arg(proxyHost).arg(proxyPort));
-    sslSocket->connectToHostEncrypted(proxyHost, proxyPort);
+    sslSocket->connectToHost(proxyHost, proxyPort);
 }
 
 void ProxyClient::cancelRequest()
@@ -185,11 +187,9 @@ QSslConfiguration ProxyClient::createSslConfiguration()
 
 void ProxyClient::handleSslSocketConnected()
 {
-    addDebugMessage("SSL Socket已连接 - TLS握手成功");
-    
-    tlsConnected = true;
-    
-    // TLS连接建立后，等待一小段时间确保连接稳定，然后发送CONNECT请求
+    addDebugMessage("已连接到代理服务器");
+
+    // TCP连接建立后，等待一小段时间确保连接稳定，然后发送CONNECT请求
     addDebugMessage("准备发送CONNECT请求...");
     QTimer::singleShot(100, this, &ProxyClient::sendConnectRequest);
 }
@@ -239,6 +239,13 @@ void ProxyClient::handleSslErrors(const QList<QSslError> &errors)
     sslSocket->ignoreSslErrors();
 }
 
+void ProxyClient::handleSslSocketEncrypted()
+{
+    tlsConnected = true;
+    addDebugMessage("TLS握手完成，开始发送HTTP请求...");
+    sendHttpRequest();
+}
+
 void ProxyClient::handleSslSocketReadyRead()
 {
     QByteArray data = sslSocket->readAll();
@@ -267,8 +274,8 @@ void ProxyClient::handleConnectionTimeout()
 
 void ProxyClient::sendConnectRequest()
 {
-    if (!tlsConnected) {
-        emit networkError("TLS连接未建立");
+    if (sslSocket->state() != QAbstractSocket::ConnectedState) {
+        emit networkError("未连接到代理服务器");
         return;
     }
     
@@ -320,12 +327,13 @@ void ProxyClient::parseConnectResponse()
     
     // 检查响应状态
     if (responseStr.contains("200 Connection Established")) {
-        addDebugMessage("CONNECT请求成功，准备发送HTTP请求...");
+        addDebugMessage("CONNECT请求成功，开始TLS握手...");
         connectResponseReceived = true;
         responseBuffer.remove(0, endIndex + 4); // 移除响应头
-        
-        // CONNECT成功，现在发送HTTP请求
-        sendHttpRequest();
+
+        // 设置目标主机名用于SNI
+        sslSocket->setPeerVerifyName(targetHost);
+        sslSocket->startClientEncryption();
     } else {
         // CONNECT失败
         addDebugMessage("CONNECT请求失败: " + responseStr);

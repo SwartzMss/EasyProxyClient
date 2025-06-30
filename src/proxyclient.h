@@ -56,6 +56,7 @@ signals:
 
 private slots:
     void handleSslSocketConnected();
+    void handleSslSocketEncrypted();
     void handleSslSocketDisconnected();
     void handleSslSocketError(QAbstractSocket::SocketError error);
     void handleSslErrors(const QList<QSslError> &errors);
