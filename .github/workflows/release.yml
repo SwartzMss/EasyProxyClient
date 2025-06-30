@@ -40,25 +40,25 @@ jobs:
     - name: Copy DLLs
       shell: cmd
       run: |
-        windeployqt --release --qmldir . release\EasyProxyClient.exe
+        windeployqt --release --qmldir . bin\release\EasyProxyClient.exe
 
     - name: Cleanup Release Directory
       shell: powershell
       run: |
-        Get-ChildItem -Path release -Recurse -Filter *.obj | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path release -Recurse -Filter *.cpp | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path release -Recurse -Filter *.h | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path release -Recurse -Filter *.qrc | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path release -Recurse -Filter *.qml | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path release -Recurse -Filter *.ui | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path release -Recurse -Filter *.qm | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path release -Recurse -Filter *.qmldir | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -Path release -Recurse -Filter *.qmltypes | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path bin/release -Recurse -Filter *.obj | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path bin/release -Recurse -Filter *.cpp | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path bin/release -Recurse -Filter *.h | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path bin/release -Recurse -Filter *.qrc | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path bin/release -Recurse -Filter *.qml | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path bin/release -Recurse -Filter *.ui | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path bin/release -Recurse -Filter *.qm | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path bin/release -Recurse -Filter *.qmldir | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem -Path bin/release -Recurse -Filter *.qmltypes | Remove-Item -Force -ErrorAction SilentlyContinue
 
     - name: Compress Release
       shell: cmd
       run: |
-        powershell Compress-Archive -Path release\* -DestinationPath release.zip
+        powershell Compress-Archive -Path bin\release\* -DestinationPath release.zip
         
     - name: Upload Release
       uses: actions/upload-artifact@v4
