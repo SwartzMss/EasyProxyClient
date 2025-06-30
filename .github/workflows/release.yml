@@ -64,8 +64,10 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: EasyProxyClient
-        path: release.zip
-        retention-days: 30 
+        path: |
+          release.zip
+          bin/release/EasyProxyClient.exe
+        retention-days: 30
 
     - name: Get existing Release upload URL
       id: get_release
@@ -98,5 +100,6 @@ jobs:
       with:
         files: |
           release.zip
+          bin/release/EasyProxyClient.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
