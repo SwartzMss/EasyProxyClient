@@ -18,11 +18,6 @@ HEADERS += \
     src/proxyclient.h \
     src/configmanager.h
 
-# Windows特定设置
-win32 {
-    CONFIG += windows
-}
-
 # 输出目录设置
 DESTDIR = $$PWD/bin
 
@@ -42,5 +37,12 @@ OBJECTS_DIR = build/obj
 # 清理构建目录
 QMAKE_CLEAN += -r build/
 
-# libcurl
-LIBS += -lcurl
+# Windows配置
+CONFIG += windows
+
+# libcurl配置
+INCLUDEPATH += $$PWD/depend/libcurl/include
+LIBS += -L$$PWD/depend/libcurl/lib -llibcurl
+
+# 复制libcurl.dll到输出目录
+QMAKE_POST_LINK += $$quote(cmd /c copy /y \"$$PWD\\depend\\libcurl\\bin\\libcurl.dll\" \"$$shell_path($$DESTDIR)\")
