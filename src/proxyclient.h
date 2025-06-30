@@ -4,6 +4,8 @@
 #include <QObject>
 #include <QSslSocket>
 #include <QSslConfiguration>
+#include <QSslCertificate>
+#include <QSslError>
 #include <QTimer>
 #include <QStringList>
 
