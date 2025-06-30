@@ -12,7 +12,9 @@
 
 ProxyClient::ProxyClient(QObject *parent)
     : QObject(parent)
-    , sslSocket(new QSslSocket(this))
+    , proxySocket(new QSslSocket(this))
+    , tunnelSocket(nullptr)
+    , currentSocket(proxySocket)
     , connectionTimer(new QTimer(this))
     , proxyPort(8080)
     , targetPort(443)
@@ -21,18 +23,18 @@ ProxyClient::ProxyClient(QObject *parent)
     , connectRequestSent(false)
     , connectResponseReceived(false)
 {
-    // 连接SSL Socket信号
-    connect(sslSocket, &QSslSocket::connected,
+    // 连接到代理使用的socket信号
+    connect(proxySocket, &QSslSocket::connected,
             this, &ProxyClient::handleSslSocketConnected);
-    connect(sslSocket, &QSslSocket::encrypted,
+    connect(proxySocket, &QSslSocket::encrypted,
             this, &ProxyClient::handleSslSocketEncrypted);
-    connect(sslSocket, &QSslSocket::disconnected, 
+    connect(proxySocket, &QSslSocket::disconnected,
             this, &ProxyClient::handleSslSocketDisconnected);
-    connect(sslSocket, &QSslSocket::errorOccurred,
+    connect(proxySocket, &QSslSocket::errorOccurred,
             this, &ProxyClient::handleSslSocketError);
-    connect(sslSocket, &QSslSocket::sslErrors, 
+    connect(proxySocket, &QSslSocket::sslErrors,
             this, &ProxyClient::handleSslErrors);
-    connect(sslSocket, &QSslSocket::readyRead, 
+    connect(proxySocket, &QSslSocket::readyRead,
             this, &ProxyClient::handleSslSocketReadyRead);
     
     // 连接超时定时器
@@ -43,8 +45,11 @@ ProxyClient::ProxyClient(QObject *parent)
 
 ProxyClient::~ProxyClient()
 {
-    if (sslSocket) {
-        sslSocket->disconnectFromHost();
+    if (proxySocket) {
+        proxySocket->disconnectFromHost();
+    }
+    if (tunnelSocket && tunnelSocket != proxySocket) {
+        tunnelSocket->disconnectFromHost();
     }
     if (connectionTimer) {
         connectionTimer->stop();
@@ -130,18 +135,19 @@ void ProxyClient::connectToUrl(const QString &url)
     
     // 配置SSL
     QSslConfiguration sslConfig = createSslConfiguration();
-    sslSocket->setSslConfiguration(sslConfig);
+    proxySocket->setSslConfiguration(sslConfig);
     
     // 连接到代理服务器
     addDebugMessage(QString("正在连接到HTTPS代理: %1:%2").arg(proxyHost).arg(proxyPort));
-    sslSocket->connectToHostEncrypted(proxyHost, proxyPort);
+    currentSocket = proxySocket;
+    proxySocket->connectToHostEncrypted(proxyHost, proxyPort);
 }
 
 void ProxyClient::cancelRequest()
 {
     if (connecting) {
-        if (sslSocket) {
-            sslSocket->disconnectFromHost();
+        if (currentSocket) {
+            currentSocket->disconnectFromHost();
         }
         if (connectionTimer) {
             connectionTimer->stop();
@@ -213,7 +219,7 @@ void ProxyClient::handleSslSocketError(QAbstractSocket::SocketError error)
 {
     QString errorMsg = QString("Socket错误: %1 - %2")
         .arg(error)
-        .arg(sslSocket->errorString());
+        .arg(currentSocket->errorString());
     addDebugMessage(errorMsg);
     
     if (connecting) {
@@ -234,7 +240,7 @@ void ProxyClient::handleSslErrors(const QList<QSslError> &errors)
     emit sslErrors(errorMsg);
     
     // 忽略SSL错误继续连接
-    sslSocket->ignoreSslErrors();
+    currentSocket->ignoreSslErrors();
 }
 
 void ProxyClient::handleSslSocketEncrypted()
@@ -253,7 +259,7 @@ void ProxyClient::handleSslSocketEncrypted()
 
 void ProxyClient::handleSslSocketReadyRead()
 {
-    QByteArray data = sslSocket->readAll();
+    QByteArray data = currentSocket->readAll();
     addDebugMessage(QString("收到数据，长度: %1 字节").arg(data.size()));
     responseBuffer.append(data);
     
@@ -270,8 +276,8 @@ void ProxyClient::handleConnectionTimeout()
 {
     if (connecting) {
         connecting = false;
-        if (sslSocket) {
-            sslSocket->disconnectFromHost();
+        if (currentSocket) {
+            currentSocket->disconnectFromHost();
         }
         emit connectionFinished(false, "连接超时");
     }
@@ -279,7 +285,7 @@ void ProxyClient::handleConnectionTimeout()
 
 void ProxyClient::sendConnectRequest()
 {
-    if (sslSocket->state() != QAbstractSocket::ConnectedState) {
+    if (currentSocket->state() != QAbstractSocket::ConnectedState) {
         emit networkError("未连接到代理服务器");
         return;
     }
@@ -309,7 +315,7 @@ void ProxyClient::sendConnectRequest()
     addDebugMessage("发送CONNECT请求: " + connectRequest);
     
     // 发送CONNECT请求
-    int bytesWritten = sslSocket->write(connectRequest.toUtf8());
+    int bytesWritten = currentSocket->write(connectRequest.toUtf8());
     addDebugMessage(QString("CONNECT请求已发送，字节数: %1").arg(bytesWritten));
     
     connectRequestSent = true;
@@ -336,9 +342,31 @@ void ProxyClient::parseConnectResponse()
         connectResponseReceived = true;
         responseBuffer.remove(0, endIndex + 4); // 移除响应头
 
-        // 设置目标主机名用于SNI
-        sslSocket->setPeerVerifyName(targetHost);
-        sslSocket->startClientEncryption();
+        // 创建新的socket用于与目标服务器TLS握手
+        tunnelSocket = new QSslSocket(this);
+        QSslConfiguration cfg = createSslConfiguration();
+        tunnelSocket->setSslConfiguration(cfg);
+
+        // 继承已有连接的描述符
+        qintptr desc = proxySocket->socketDescriptor();
+        tunnelSocket->setSocketDescriptor(desc);
+        proxySocket->setSocketDescriptor(-1); // 防止旧socket关闭连接
+
+        // 重新连接信号到新socket
+        connect(tunnelSocket, &QSslSocket::encrypted,
+                this, &ProxyClient::handleSslSocketEncrypted);
+        connect(tunnelSocket, &QSslSocket::readyRead,
+                this, &ProxyClient::handleSslSocketReadyRead);
+        connect(tunnelSocket, &QSslSocket::disconnected,
+                this, &ProxyClient::handleSslSocketDisconnected);
+        connect(tunnelSocket, &QSslSocket::errorOccurred,
+                this, &ProxyClient::handleSslSocketError);
+        connect(tunnelSocket, &QSslSocket::sslErrors,
+                this, &ProxyClient::handleSslErrors);
+
+        currentSocket = tunnelSocket;
+        currentSocket->setPeerVerifyName(targetHost);
+        currentSocket->startClientEncryption();
     } else {
         // CONNECT失败
         addDebugMessage("CONNECT请求失败: " + responseStr);
@@ -367,7 +395,7 @@ void ProxyClient::sendHttpRequest()
     addDebugMessage("发送HTTP请求: " + request);
     
     // 发送HTTP请求
-    int bytesWritten = sslSocket->write(request.toUtf8());
+    int bytesWritten = currentSocket->write(request.toUtf8());
     addDebugMessage(QString("HTTP请求已发送，字节数: %1").arg(bytesWritten));
 }
 
@@ -442,7 +470,8 @@ void ProxyClient::parseHttpResponse()
         emit connectionFinished(true, result);
         
         // 关闭连接
-        sslSocket->disconnectFromHost();
+        if (currentSocket)
+            currentSocket->disconnectFromHost();
     } else {
         // HTTP请求失败
         connecting = false;

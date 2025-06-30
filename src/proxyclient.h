@@ -71,7 +71,12 @@ private:
     void parseHttpResponse();
     void showError(const QString &message);
 
-    QSslSocket *sslSocket;
+    // 与代理通信的socket
+    QSslSocket *proxySocket;
+    // 与目标服务器通信的socket，建立在代理隧道之上
+    QSslSocket *tunnelSocket;
+    // 当前活动的socket，用于读写数据
+    QSslSocket *currentSocket;
     QTimer *connectionTimer;
     
     // 代理设置
