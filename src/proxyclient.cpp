@@ -248,7 +248,10 @@ void ProxyClient::handleSslSocketEncrypted()
 
 void ProxyClient::handleSslSocketReadyRead()
 {
-    QByteArray data = sslSocket->readAll();
+    const QByteArray data = sslSocket->readAll();
+    if (data.isEmpty())
+        return;
+
     buffer_.append(data);
     addDebugMessage(QString("收到数据，长度: %1 字节").arg(data.size()));
 
