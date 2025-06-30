@@ -84,3 +84,4 @@ private:
     // debug
     QStringList debugLines_;
 };
+#endif // PROXYCLIENT_H
