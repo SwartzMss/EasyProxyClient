@@ -1,4 +1,4 @@
-QT += core widgets network
+QT += core widgets network concurrent
 
 CONFIG += c++11
 
@@ -40,4 +40,7 @@ UI_DIR = build/ui
 OBJECTS_DIR = build/obj
 
 # 清理构建目录
-QMAKE_CLEAN += -r build/ 
+QMAKE_CLEAN += -r build/
+
+# libcurl
+LIBS += -lcurl

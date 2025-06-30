@@ -37,6 +37,10 @@ EasyProxyClient 是面向 [EasyProxy](https://github.com/SwartzMss/EasyProxy) �
 - 下载 Visual Studio Community：https://visualstudio.microsoft.com/
 - 安装时选择"C++桌面开发"工作负载
 
+#### 安装 libcurl
+- 安装 libcurl 库（需要包含开发头文件）
+- Windows 用户可从 <https://curl.se/windows/> 下载预编译包
+
 ### 2. 构建项目
 
 #### 方法一：使用 Qt Creator（推荐）
