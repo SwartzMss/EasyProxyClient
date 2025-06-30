@@ -2,7 +2,7 @@
 #define PROXYCLIENT_H
 
 #include <QObject>
-#include <QSslSocket>
+#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QUrl>
@@ -55,23 +55,17 @@ signals:
     void debugMessage(const QString &message);
 
 private slots:
-    void handleSslSocketConnected();
-    void handleSslSocketEncrypted();
-    void handleSslSocketDisconnected();
-    void handleSslSocketError(QAbstractSocket::SocketError error);
-    void handleSslErrors(const QList<QSslError> &errors);
-    void handleSslSocketReadyRead();
+    void handleReplyFinished();
+    void handleReplySslErrors(const QList<QSslError> &errors);
+    void handleReplyReadyRead();
     void handleConnectionTimeout();
 
 private:
     QSslConfiguration createSslConfiguration();
-    void sendConnectRequest();
-    void parseConnectResponse();
-    void sendHttpRequest();
-    void parseHttpResponse();
     void showError(const QString &message);
 
-    QSslSocket *sslSocket;
+    QNetworkAccessManager *networkManager;
+    QNetworkReply *networkReply;
     QTimer *connectionTimer;
     
     // 代理设置
@@ -85,14 +79,9 @@ private:
     
     // 目标URL
     QString targetUrl;
-    QString targetHost;
-    int targetPort;
     
     // 状态
     bool connecting;
-    bool tlsConnected;
-    bool connectRequestSent;
-    bool connectResponseReceived;
     
     // 缓冲区
     QByteArray responseBuffer;
