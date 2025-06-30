@@ -17,9 +17,7 @@ ProxyClient::ProxyClient(QObject *parent)
     , proxyPort(8080)
     , targetPort(443)
     , connecting(false)
-    , tlsConnected(false)
-    , connectRequestSent(false)
-    , connectResponseReceived(false)
+    , stage_(Stage::ProxyTlsHandshake)
 {
     // 连接SSL Socket信号
     connect(sslSocket, &QSslSocket::connected,
@@ -113,10 +111,8 @@ void ProxyClient::connectToUrl(const QString &url)
     
     // 重置状态
     connecting = true;
-    tlsConnected = false;
-    connectRequestSent = false;
-    connectResponseReceived = false;
-    responseBuffer.clear();
+    stage_ = Stage::ProxyTlsHandshake;
+    buffer_.clear();
     debugMessages.clear();
     
     addDebugMessage("开始连接流程");
@@ -194,11 +190,8 @@ void ProxyClient::handleSslSocketConnected()
 
 void ProxyClient::handleSslSocketDisconnected()
 {
-    QString msg = QString("SSL Socket已断开连接 - 连接状态:%1, TLS连接:%2, CONNECT请求已发送:%3, CONNECT响应已接收:%4")
-        .arg(connecting)
-        .arg(tlsConnected)
-        .arg(connectRequestSent)
-        .arg(connectResponseReceived);
+    QString msg = QString("SSL Socket已断开连接 - 连接状态:%1")
+        .arg(connecting);
     
     addDebugMessage(msg);
     
@@ -239,29 +232,48 @@ void ProxyClient::handleSslErrors(const QList<QSslError> &errors)
 
 void ProxyClient::handleSslSocketEncrypted()
 {
-    // 如果CONNECT请求尚未发送，说明当前TLS握手与代理服务器完成
-    if (!connectRequestSent) {
+    if (stage_ == Stage::ProxyTlsHandshake) {
         addDebugMessage("已与代理建立TLS连接，准备发送CONNECT请求...");
         sendConnectRequest();
+        stage_ = Stage::WaitProxyResponse;
         return;
     }
 
-    tlsConnected = true;
-    addDebugMessage("TLS握手完成，开始发送HTTP请求...");
-    sendHttpRequest();
+    if (stage_ == Stage::TargetTlsHandshake) {
+        addDebugMessage("TLS握手完成，开始发送HTTP请求...");
+        stage_ = Stage::Ready;
+        sendHttpRequest();
+    }
 }
 
 void ProxyClient::handleSslSocketReadyRead()
 {
-    QByteArray data = sslSocket->readAll();
-    addDebugMessage(QString("收到数据，长度: %1 字节").arg(data.size()));
-    responseBuffer.append(data);
-    
-    if (!connectResponseReceived) {
-        addDebugMessage("解析CONNECT响应...");
-        parseConnectResponse();
-    } else {
-        addDebugMessage("解析HTTP响应...");
+    buffer_.append(sslSocket->readAll());
+    addDebugMessage(QString("收到数据，长度: %1 字节").arg(buffer_.size()));
+
+    if (stage_ == Stage::WaitProxyResponse) {
+        const int headerEnd = buffer_.indexOf("\r\n\r\n");
+        if (headerEnd == -1)
+            return;
+
+        const QByteArray header = buffer_.left(headerEnd + 4);
+        if (!header.startsWith("HTTP/1.1 200") && !header.startsWith("HTTP/1.0 200")) {
+            addDebugMessage("CONNECT请求失败: " + QString::fromUtf8(header));
+            connecting = false;
+            connectionTimer->stop();
+            emit connectionFinished(false, "CONNECT请求失败: " + QString::fromUtf8(header));
+            sslSocket->disconnectFromHost();
+            return;
+        }
+
+        buffer_.remove(0, headerEnd + 4);
+        stage_ = Stage::TargetTlsHandshake;
+        sslSocket->setPeerVerifyName(targetHost);
+        sslSocket->startClientEncryption();
+        return;
+    }
+
+    if (stage_ == Stage::Ready) {
         parseHttpResponse();
     }
 }
@@ -312,40 +324,6 @@ void ProxyClient::sendConnectRequest()
     int bytesWritten = sslSocket->write(connectRequest.toUtf8());
     addDebugMessage(QString("CONNECT请求已发送，字节数: %1").arg(bytesWritten));
     
-    connectRequestSent = true;
-}
-
-void ProxyClient::parseConnectResponse()
-{
-    // 查找HTTP响应结束标记
-    int endIndex = responseBuffer.indexOf("\r\n\r\n");
-    if (endIndex == -1) {
-        addDebugMessage("CONNECT响应不完整，等待更多数据...");
-        return; // 响应不完整，等待更多数据
-    }
-    
-    // 提取响应头
-    QByteArray responseHeaders = responseBuffer.left(endIndex);
-    QString responseStr = QString::fromUtf8(responseHeaders);
-    
-    addDebugMessage("收到CONNECT响应: " + responseStr);
-    
-    // 检查响应状态
-    if (responseStr.contains("200 Connection Established")) {
-        addDebugMessage("CONNECT请求成功，开始TLS握手...");
-        connectResponseReceived = true;
-        responseBuffer.remove(0, endIndex + 4); // 移除响应头
-
-        // 设置目标主机名用于SNI
-        sslSocket->setPeerVerifyName(targetHost);
-        sslSocket->startClientEncryption();
-    } else {
-        // CONNECT失败
-        addDebugMessage("CONNECT请求失败: " + responseStr);
-        connecting = false;
-        connectionTimer->stop();
-        emit connectionFinished(false, "CONNECT请求失败: " + responseStr);
-    }
 }
 
 void ProxyClient::sendHttpRequest()
@@ -374,13 +352,13 @@ void ProxyClient::sendHttpRequest()
 void ProxyClient::parseHttpResponse()
 {
     // 查找HTTP响应结束标记
-    int endIndex = responseBuffer.indexOf("\r\n\r\n");
+    int endIndex = buffer_.indexOf("\r\n\r\n");
     if (endIndex == -1) {
         return; // 响应不完整，等待更多数据
     }
     
     // 提取响应头
-    QByteArray responseHeaders = responseBuffer.left(endIndex);
+    QByteArray responseHeaders = buffer_.left(endIndex);
     QString responseStr = QString::fromUtf8(responseHeaders);
     
     addDebugMessage("收到HTTP响应头: " + responseStr);
@@ -388,7 +366,7 @@ void ProxyClient::parseHttpResponse()
     // 检查响应状态
     if (responseStr.contains("200 OK")) {
         // 提取响应体
-        QByteArray responseBody = responseBuffer.mid(endIndex + 4);
+        QByteArray responseBody = buffer_.mid(endIndex + 4);
         
         // 检查是否有Content-Length头
         int contentLength = -1;
