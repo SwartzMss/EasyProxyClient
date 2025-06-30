@@ -43,6 +43,6 @@ jobs:
       with:
         name: EasyProxyClient
         path: |
-          release/*.exe
-          release/*.dll
-        retention-days: 30 
+          bin/release/*.exe
+          bin/release/*.dll
+        retention-days: 30
