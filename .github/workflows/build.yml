@@ -27,14 +27,6 @@ jobs:
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Generate libcurl import library
-      shell: cmd
-      run: |
-        cd depend\libcurl
-        if not exist lib mkdir lib
-        cd bin
-        dumpbin /exports libcurl.dll > ..\libcurl.def
-        lib /def:..\libcurl.def /machine:x64 /out:..\lib\libcurl.lib
 
     - name: Configure
       shell: cmd
