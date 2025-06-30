@@ -3,13 +3,6 @@
 
 #include <QObject>
 #include <QSslSocket>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QUrl>
-#include <QSslConfiguration>
-#include <QSslCertificate>
-#include <QSslError>
-#include <QString>
 #include <QTimer>
 #include <QStringList>
 
@@ -19,76 +12,38 @@ class ProxyClient : public QObject
 
 public:
     explicit ProxyClient(QObject *parent = nullptr);
-    ~ProxyClient();
+    ~ProxyClient() override;
 
-    // 配置代理设置
+    // ---- Public API ---------------------------------------------------
     void setProxySettings(const QString &host, int port,
-                         const QString &username = QString(),
-                         const QString &password = QString());
-    
-    // 配置SSL证书
+                          const QString &username = {},
+                          const QString &password = {});
     void setSslCertificate(const QString &certificatePath);
-    
-    // 发起网络请求
-    void connectToUrl(const QString &url);
-    
-    // 取消当前请求
+    void connectToUrl(const QString &url);          // begin full TLS→CONNECT→TLS flow
     void cancelRequest();
-    
-    // 检查是否正在连接
-    bool isConnecting() const;
+    bool isConnecting() const { return connecting_; }
 
 signals:
-    // 连接开始
     void connectionStarted();
-    
-    // 连接完成
     void connectionFinished(bool success, const QString &result);
-    
-    // SSL错误
     void sslErrors(const QString &errorMessage);
-    
-    // 网络错误
     void networkError(const QString &errorMessage);
-    
-    // 实时调试信息
     void debugMessage(const QString &message);
 
 private slots:
-    void handleSslSocketConnected();
-    void handleSslSocketEncrypted();
-    void handleSslSocketDisconnected();
-    void handleSslSocketError(QAbstractSocket::SocketError error);
-    void handleSslErrors(const QList<QSslError> &errors);
-    void handleSslSocketReadyRead();
-    void handleConnectionTimeout();
+    // QSslSocket handlers
+    void onSocketConnected();
+    void onSocketEncrypted();
+    void onSocketReadyRead();
+    void onSocketDisconnected();
+    void onSocketError(QAbstractSocket::SocketError error);
+    void onSslErrors(const QList<QSslError> &errors);
+
+    // timeout guard
+    void onConnectionTimeout();
 
 private:
-    QSslConfiguration createSslConfiguration();
-    void sendConnectRequest();
-    void sendHttpRequest();
-    void parseHttpResponse();
-    void showError(const QString &message);
-
-    QSslSocket *sslSocket;
-    QTimer *connectionTimer;
-    
-    // 代理设置
-    QString proxyHost;
-    int proxyPort;
-    QString proxyUsername;
-    QString proxyPassword;
-    
-    // SSL设置
-    QString certificatePath;
-    
-    // 目标URL
-    QString targetUrl;
-    QString targetHost;
-    int targetPort;
-    
-    // 状态
-    bool connecting;
+    // ---- Internal helpers --------------------------------------------
     enum class Stage {
         ProxyTlsHandshake,
         WaitProxyResponse,
@@ -96,14 +51,36 @@ private:
         Ready
     };
 
-    Stage stage_;
-    
-    // 缓冲区
-    QByteArray buffer_;
-    
-    // 调试信息收集
-    QStringList debugMessages;
-    void addDebugMessage(const QString &message);
-};
+    QSslConfiguration buildSslConfiguration() const;
+    void sendConnectRequest();
+    bool tryParseConnectResponse();           // returns true when CONNECT finished
+    bool tryParseHttpResponse();              // returns true when HTTP finished
+    void appendDebug(const QString &msg);
+    void finishWithError(const QString &msg);
 
-#endif // PROXYCLIENT_H 
+    // ---- Data ---------------------------------------------------------
+    QSslSocket   *socket_         { nullptr };
+    QTimer       *timer_          { nullptr };
+
+    // proxy
+    QString proxyHost_;
+    int     proxyPort_            { 8080 };
+    QString proxyUser_;
+    QString proxyPass_;
+
+    // certificate
+    QString caPath_;
+
+    // target
+    QString targetUrl_;
+    QString targetHost_;
+    int     targetPort_           { 443 };
+
+    // state
+    bool  connecting_             { false };
+    Stage stage_                  { Stage::ProxyTlsHandshake };
+    QByteArray buffer_;                               // unified receive buffer
+
+    // debug
+    QStringList debugLines_;
+};
