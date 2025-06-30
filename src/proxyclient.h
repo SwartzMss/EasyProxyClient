@@ -22,8 +22,8 @@ public:
     ~ProxyClient();
 
     // 配置代理设置
-    void setProxySettings(const QString &host, int port, 
-                         const QString &username = QString(), 
+    void setProxySettings(const QString &host, int port,
+                         const QString &username = QString(),
                          const QString &password = QString());
     
     // 配置SSL证书

@@ -72,6 +72,7 @@ void MainWindow::setupUI()
     passwordEdit->setPlaceholderText("代理密码");
     passwordEdit->setEchoMode(QLineEdit::Password);
     proxyLayout->addWidget(passwordEdit, 1, 3);
+
     
     mainLayout->addWidget(proxyGroup);
     
@@ -304,7 +305,7 @@ void MainWindow::about()
     QMessageBox::about(this, "关于 EasyProxyClient",
         "EasyProxyClient v1.0.0\n\n"
         "一个用于连接 EasyProxy 的客户端程序\n"
-        "支持 HTTP 代理和 SSL 证书配置\n\n"
+        "支持 HTTPS 代理（TLS）和 SSL 证书配置\n\n"
         "基于 Qt 6 开发\n"
         "MIT License");
 }
