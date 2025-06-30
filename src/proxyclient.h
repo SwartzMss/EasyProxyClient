@@ -66,7 +66,6 @@ private slots:
 private:
     QSslConfiguration createSslConfiguration();
     void sendConnectRequest();
-    void parseConnectResponse();
     void sendHttpRequest();
     void parseHttpResponse();
     void showError(const QString &message);
@@ -90,12 +89,17 @@ private:
     
     // 状态
     bool connecting;
-    bool tlsConnected;
-    bool connectRequestSent;
-    bool connectResponseReceived;
+    enum class Stage {
+        ProxyTlsHandshake,
+        WaitProxyResponse,
+        TargetTlsHandshake,
+        Ready
+    };
+
+    Stage stage_;
     
     // 缓冲区
-    QByteArray responseBuffer;
+    QByteArray buffer_;
     
     // 调试信息收集
     QStringList debugMessages;
