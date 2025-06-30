@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QSslSocket>
+#include <QSslConfiguration>
 #include <QTimer>
 #include <QStringList>
 
