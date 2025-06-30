@@ -151,7 +151,6 @@ void MainWindow::setupConnections()
     // 连接代理客户端信号
     connect(proxyClient, &ProxyClient::connectionStarted, this, &MainWindow::onConnectionStarted);
     connect(proxyClient, &ProxyClient::connectionFinished, this, &MainWindow::onConnectionFinished);
-    connect(proxyClient, &ProxyClient::sslErrors, this, &MainWindow::onSslErrors);
     connect(proxyClient, &ProxyClient::networkError, this, &MainWindow::onNetworkError);
     connect(proxyClient, &ProxyClient::debugMessage, this, &MainWindow::onDebugMessage);
 }
@@ -261,10 +260,6 @@ void MainWindow::onConnectionFinished(bool success, const QString &result)
     }
 }
 
-void MainWindow::onSslErrors(const QString &errorMessage)
-{
-    QMessageBox::warning(this, "SSL错误", errorMessage);
-}
 
 void MainWindow::onNetworkError(const QString &errorMessage)
 {

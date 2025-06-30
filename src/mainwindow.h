@@ -35,7 +35,6 @@ private slots:
     void connectToProxy();
     void onConnectionStarted();
     void onConnectionFinished(bool success, const QString &result);
-    void onSslErrors(const QString &errorMessage);
     void onNetworkError(const QString &errorMessage);
     void onDebugMessage(const QString &message);
     
