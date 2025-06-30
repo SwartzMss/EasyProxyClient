@@ -42,11 +42,15 @@ CONFIG += windows
 
 # libcurl配置
 INCLUDEPATH += $$PWD/depend/libcurl/include
-LIBS += -L$$PWD/depend/libcurl/lib -llibcurl
 
-# 确保链接器能找到库文件
+# Windows MSVC 链接配置
 win32-msvc* {
-    LIBS += $$PWD/depend/libcurl/lib/libcurl.lib
+    LIBS += -L$$PWD/depend/libcurl/lib -llibcurl
+}
+
+# 其他平台配置
+!win32-msvc* {
+    LIBS += -L$$PWD/depend/libcurl/lib -llibcurl
 }
 
 QMAKE_POST_LINK += $$quote(cmd /c copy /y \"$$PWD\\depend\\libcurl\\bin\\libcurl.dll\" \"$$shell_path($$DESTDIR)\" && copy /y \"$$PWD\\depend\\libcurl\\bin\\zlib1.dll\" \"$$shell_path($$DESTDIR)\" && copy /y \"$$PWD\\depend\\libcurl\\bin\\libssl-3-x64.dll\" \"$$shell_path($$DESTDIR)\" && copy /y \"$$PWD\\depend\\libcurl\\bin\\libcrypto-3-x64.dll\" \"$$shell_path($$DESTDIR)\")
