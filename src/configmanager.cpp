@@ -54,6 +54,7 @@ void ConfigManager::setProxyPassword(const QString &password)
     settings->setValue("proxy/password", password);
 }
 
+
 QString ConfigManager::getProxyHost() const
 {
     return settings->value("proxy/host", DEFAULT_PROXY_HOST).toString();
@@ -73,6 +74,7 @@ QString ConfigManager::getProxyPassword() const
 {
     return settings->value("proxy/password", DEFAULT_PROXY_PASSWORD).toString();
 }
+
 
 // SSL证书设置
 void ConfigManager::setCertificatePath(const QString &path)

@@ -51,7 +51,7 @@ ProxyClient::~ProxyClient()
     }
 }
 
-void ProxyClient::setProxySettings(const QString &host, int port, 
+void ProxyClient::setProxySettings(const QString &host, int port,
                                   const QString &username, const QString &password)
 {
     proxyHost = host;
@@ -134,7 +134,7 @@ void ProxyClient::connectToUrl(const QString &url)
     
     // 连接到代理服务器
     addDebugMessage(QString("正在连接到HTTPS代理: %1:%2").arg(proxyHost).arg(proxyPort));
-    sslSocket->connectToHost(proxyHost, proxyPort);
+    sslSocket->connectToHostEncrypted(proxyHost, proxyPort);
 }
 
 void ProxyClient::cancelRequest()
@@ -189,9 +189,7 @@ void ProxyClient::handleSslSocketConnected()
 {
     addDebugMessage("已连接到代理服务器");
 
-    // TCP连接建立后，等待一小段时间确保连接稳定，然后发送CONNECT请求
-    addDebugMessage("准备发送CONNECT请求...");
-    QTimer::singleShot(100, this, &ProxyClient::sendConnectRequest);
+
 }
 
 void ProxyClient::handleSslSocketDisconnected()
@@ -241,6 +239,13 @@ void ProxyClient::handleSslErrors(const QList<QSslError> &errors)
 
 void ProxyClient::handleSslSocketEncrypted()
 {
+    // 如果CONNECT请求尚未发送，说明当前TLS握手与代理服务器完成
+    if (!connectRequestSent) {
+        addDebugMessage("已与代理建立TLS连接，准备发送CONNECT请求...");
+        sendConnectRequest();
+        return;
+    }
+
     tlsConnected = true;
     addDebugMessage("TLS握手完成，开始发送HTTP请求...");
     sendHttpRequest();
