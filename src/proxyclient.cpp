@@ -152,9 +152,9 @@ void ProxyClient::performRequest()
         // 添加SSL选项以处理自签名证书的常见问题
         curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_ALLOW_BEAST | CURLSSLOPT_NO_REVOKE | CURLSSLOPT_NO_PARTIALCHAIN);
         
-        // 设置SSL版本兼容性
-        curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
-        curl_easy_setopt(curl, CURLOPT_PROXY_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+        // 允许libcurl协商最佳TLS版本
+        curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_MAX_DEFAULT);
+        curl_easy_setopt(curl, CURLOPT_PROXY_SSLVERSION, CURL_SSLVERSION_MAX_DEFAULT);
     } else {
         // 如果没有提供CA证书，禁用SSL验证
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
