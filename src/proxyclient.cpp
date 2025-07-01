@@ -128,7 +128,6 @@ void ProxyClient::performRequest()
     curl_easy_setopt(curl, CURLOPT_PROXYPORT, proxyPort_);
     curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTPS);
     curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
-    curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 
     if (!proxyUser_.isEmpty()) {
         QByteArray auth = QString("%1:%2").arg(proxyUser_, proxyPass_).toUtf8();
